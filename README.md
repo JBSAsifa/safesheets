@@ -143,9 +143,13 @@ Inventory and file routes require a signed-in session. Obtain the CSRF cookie fr
 
 No screenshots are included yet. Add screenshots here after a verified local walkthrough.
 
-<!-- Screenshot placeholder: add a real dashboard screenshot after a verified walkthrough. -->
+### Dashboard
+<img width="1130" height="785" alt="dashboard" src="https://github.com/user-attachments/assets/a4579eef-4209-40a1-85f7-0daff92a674b" />
 
-## Troubleshooting
+### Chemical details
+<img width="812" height="461" alt="Chemical details" src="https://github.com/user-attachments/assets/6c5387f0-ecce-45d5-bc53-623f1fc37597" />
+
+
 
 - **Django refuses to start:** set `DJANGO_SECRET_KEY` in the same terminal before starting the backend. The example file documents variables; Django does not load it automatically.
 - **The dashboard says the API is unavailable:** start Django on port `8001` and confirm `NEXT_PUBLIC_API_URL` points to `http://localhost:8001/api`.
