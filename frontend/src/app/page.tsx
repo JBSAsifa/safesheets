@@ -484,8 +484,6 @@ export default function Home() {
         );
       }
 
-      await refreshRecords();
-
       setEditingChemicalId(null);
 
       setChemicalName("");
@@ -502,6 +500,13 @@ export default function Home() {
           ? "Chemical record created."
           : "Chemical record updated.",
       );
+      try {
+        await refreshRecords();
+      } catch (refreshError) {
+        setNotice(
+          `${editingChemicalId === null ? "Chemical record created." : "Chemical record updated."} ${refreshError instanceof Error ? refreshError.message : "Reload the page to see the latest records."}`,
+        );
+      }
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "An unexpected error occurred.",
@@ -535,8 +540,14 @@ export default function Home() {
 
       setConfirmDeleteChemicalId(null);
       setSelectedChemicalId(null);
-      await refreshRecords();
-      setNotice("Chemical and linked SDS files deleted.");
+      setNotice("Chemical and linked SDS records deleted.");
+      try {
+        await refreshRecords();
+      } catch (refreshError) {
+        setNotice(
+          `Chemical and linked SDS records deleted. ${refreshError instanceof Error ? refreshError.message : "Reload the page to see the latest records."}`,
+        );
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not delete this chemical.",
@@ -684,8 +695,6 @@ export default function Home() {
         );
       }
 
-      await refreshRecords();
-
       setSDSForm(emptySDSForm);
 
       setSdsFile(null);
@@ -696,6 +705,13 @@ export default function Home() {
       setNotice(
         editingSDSId === null ? "SDS document added." : "SDS document updated.",
       );
+      try {
+        await refreshRecords();
+      } catch (refreshError) {
+        setNotice(
+          `${editingSDSId === null ? "SDS document added." : "SDS document updated."} ${refreshError instanceof Error ? refreshError.message : "Reload the page to see the latest records."}`,
+        );
+      }
     } catch (err) {
       setSDSFormError(
         err instanceof Error ? err.message : "An unexpected error occurred.",
@@ -864,8 +880,12 @@ export default function Home() {
                     type="button"
 
                     onClick={() => {
-                      setShowAddForm((previous) => !previous);
-
+                      setShowAddForm(!showAddForm);
+                      setEditingChemicalId(null);
+                      setChemicalName("");
+                      setManufacturer("");
+                      setLocation("");
+                      setNotes("");
                       setFormError("");
                     }}
 
@@ -1608,6 +1628,42 @@ export default function Home() {
                   aria-modal="true"
                   aria-labelledby="delete-chemical-title"
                   aria-describedby="delete-chemical-description"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      if (!deletingChemical) {
+                        setConfirmDeleteChemicalId(null);
+                      }
+                      return;
+                    }
+
+                    if (event.key !== "Tab") return;
+
+                    const buttons =
+                      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                        "button:not(:disabled)",
+                      );
+                    const firstButton = buttons.item(0);
+                    const lastButton = buttons.item(buttons.length - 1);
+
+                    if (!firstButton || !lastButton) return;
+
+                    if (
+                      event.shiftKey &&
+                      event.currentTarget.ownerDocument.activeElement ===
+                        firstButton
+                    ) {
+                      event.preventDefault();
+                      lastButton.focus();
+                    } else if (
+                      !event.shiftKey &&
+                      event.currentTarget.ownerDocument.activeElement ===
+                        lastButton
+                    ) {
+                      event.preventDefault();
+                      firstButton.focus();
+                    }
+                  }}
                 >
                   <h2 id="delete-chemical-title">Delete {chemical.name}?</h2>
                   <p id="delete-chemical-description">

@@ -55,11 +55,11 @@ As an employee, I want to search chemicals by name, manufacturer, or storage loc
 As a safety coordinator, I want to add a chemical and correct its details later.
 
 - A blank/whitespace-only name is rejected by both client and server; valid names are limited to 200 characters.
-- Create submits once and refreshes the list after a successful response.
+- Create submits once; after the server confirms success, the form closes even if refreshing the list fails, so retrying cannot create a duplicate.
 - Edit prefills the selected record’s current values and sends `PATCH /api/chemicals/{id}/`.
 - After update, the selected record retains its original ID and changed values appear without a page reload.
 - Cancel closes the form without sending a request and discards unsaved edits.
-- While a request is pending, the submit control is disabled. API validation or expired-session errors are visible.
+- While a request is pending, the submit control is disabled. API validation or expired-session errors are visible. A failed post-save refresh is reported separately from the successful save.
 
 ### Add and open an SDS
 
@@ -67,6 +67,7 @@ As a safety coordinator, I want to associate a PDF and its review dates with a c
 
 - An SDS requires an existing chemical and non-empty title; date values must parse as dates.
 - The server accepts only a `.pdf` upload with a PDF signature and size no greater than 10 MiB.
+- Blank optional revision and next-review dates are accepted as unknown; clearing a date in an edit saves it as null.
 - Invalid or oversized uploads return a field-level API error and create no usable document.
 - Signed-in users can open an attached PDF through the API; anonymous users cannot.
 - Missing attachments and missing stored files return a not-found response without exposing a filesystem path.
@@ -111,6 +112,6 @@ As a user, I want the API to require an authenticated session for inventory and 
 
 ## Current status (repository audit)
 
-The existing working tree includes user changes for session login/logout, authenticated inventory APIs, PDF upload/view, review status, tests, and a dashboard. This improvement pass adds chemical editing and confirmed cascade deletion, SDS metadata editing, a configurable API origin, and security/testing documentation. Role policy and tenant isolation remain future work.
+The current application includes session login/logout, authenticated inventory APIs, PDF upload/view, review status, chemical create/edit/delete, SDS metadata editing, a dashboard, and security/testing documentation. Automated backend and static frontend checks are available. Browser-driven end-to-end tests are not configured. Role policy and tenant isolation remain future work.
 
 The requirements are a target contract, not a claim that all listed behavior has passed verification. See the repository README for commands actually run and known limitations.

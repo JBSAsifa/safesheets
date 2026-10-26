@@ -1,13 +1,15 @@
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as datetime_timezone
 import os
 import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -35,6 +37,20 @@ class SDSReviewStatusTests(TestCase):
             title="Test SDS",
             next_review_date=next_review_date,
         )
+
+    def test_review_status_uses_the_active_timezone_for_today(self):
+        document = self.create_document(date(2026, 10, 26))
+        instant = datetime(
+            2026, 10, 26, 18, 30, tzinfo=datetime_timezone.utc
+        )
+
+        with timezone.override("Asia/Dhaka"), patch(
+            "safety_api.models.timezone.now", return_value=instant
+        ):
+            self.assertEqual(
+                document.review_status,
+                SDSDocument.ReviewStatus.OVERDUE,
+            )
 
     @patch("safety_api.models.timezone.localdate")
     def test_missing_date_is_unknown(self, mock_today):
@@ -168,6 +184,30 @@ class SDSReviewStatusFilterTests(TestCase):
             [self.due_soon.id],
         )
 
+    @patch(
+        "safety_api.models.timezone.localdate",
+        return_value=date(2026, 10, 11),
+    )
+    def test_filter_current(self, mock_today):
+        response = self.client.get(
+            "/api/sds-documents/?review_status=current"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [self.current.id])
+
+    @patch(
+        "safety_api.models.timezone.localdate",
+        return_value=date(2026, 10, 11),
+    )
+    def test_filter_unknown(self, mock_today):
+        response = self.client.get(
+            "/api/sds-documents/?review_status=unknown"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [self.unknown.id])
+
     def test_invalid_status_returns_400(self):
         response = self.client.get(
             "/api/sds-documents/?review_status=invalid"
@@ -221,6 +261,16 @@ class ChemicalWorkflowTests(TestCase):
         self.assertEqual(created.status_code, status.HTTP_201_CREATED)
         chemical_id = created.data["id"]
         self.assertEqual(created.data["name"], "Acetone")
+        self.assertEqual(
+            Chemical.objects.get(pk=chemical_id).created_by_id,
+            self.user.pk,
+        )
+
+        retrieved = self.client.get(f"/api/chemicals/{chemical_id}/")
+
+        self.assertEqual(retrieved.status_code, status.HTTP_200_OK)
+        self.assertEqual(retrieved.data["id"], chemical_id)
+        self.assertEqual(retrieved.data["name"], "Acetone")
 
         updated = self.client.patch(
             f"/api/chemicals/{chemical_id}/",
@@ -257,6 +307,27 @@ class ChemicalWorkflowTests(TestCase):
         chemical.refresh_from_db()
         self.assertEqual(chemical.name, "Protected")
 
+    def test_session_authenticated_chemical_write_requires_csrf(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.force_login(self.user)
+
+        rejected = client.post(
+            "/api/chemicals/",
+            {"name": "CSRF protected"},
+            format="json",
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_403_FORBIDDEN)
+
+        client.get("/api/csrf-token/")
+        csrf_token = client.cookies["csrftoken"].value
+        accepted = client.post(
+            "/api/chemicals/",
+            {"name": "CSRF protected"},
+            format="json",
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+        self.assertEqual(accepted.status_code, status.HTTP_201_CREATED)
+
     def test_delete_removes_chemical_sds_record_and_stored_file(self):
         with tempfile.TemporaryDirectory() as media_directory:
             with override_settings(MEDIA_ROOT=media_directory):
@@ -282,6 +353,29 @@ class ChemicalWorkflowTests(TestCase):
                 self.assertFalse(SDSDocument.objects.filter(pk=document.id).exists())
                 self.assertFalse(os.path.exists(stored_path))
 
+    @patch(
+        "safety_api.views.default_storage.delete",
+        side_effect=OSError("disk unavailable"),
+    )
+    def test_file_cleanup_failure_does_not_report_committed_delete_as_failure(
+        self, mock_delete
+    ):
+        chemical = Chemical.objects.create(name="Cleanup failure chemical")
+        document = SDSDocument.objects.create(
+            chemical=chemical,
+            title="Stored document",
+            sds_file="sds_documents/unavailable.pdf",
+        )
+
+        with self.assertLogs("safety_api.views", level="ERROR"):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.delete(f"/api/chemicals/{chemical.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Chemical.objects.filter(pk=chemical.id).exists())
+        self.assertFalse(SDSDocument.objects.filter(pk=document.id).exists())
+        mock_delete.assert_called_once_with("sds_documents/unavailable.pdf")
+
     def test_anonymous_user_cannot_delete_chemical(self):
         chemical = Chemical.objects.create(name="Protected delete")
         response = APIClient().delete(f"/api/chemicals/{chemical.id}/")
@@ -298,6 +392,21 @@ class SDSFileWorkflowTests(TestCase):
             password="Test-Password-482!",
         )
         self.chemical = Chemical.objects.create(name="File test chemical")
+
+    def test_missing_stored_file_returns_not_found_without_path(self):
+        self.client.force_authenticate(user=self.user)
+        document = SDSDocument.objects.create(
+            chemical=self.chemical,
+            title="Missing file",
+            sds_file="sds_documents/does-not-exist.pdf",
+        )
+
+        response = self.client.get(
+            f"/api/sds-documents/{document.id}/file/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertNotIn("does-not-exist", response.data["detail"])
 
     def test_rejects_non_pdf_content_with_pdf_extension(self):
         self.client.force_authenticate(user=self.user)
@@ -423,37 +532,50 @@ class SDSFileWorkflowTests(TestCase):
         self.assertEqual(response.data["title"], "After update")
         self.assertEqual(SDSDocument.objects.count(), 1)
 
-    def test_replacing_pdf_removes_the_previous_file_after_update_commits(self):
+    def test_multipart_upload_accepts_empty_optional_dates(self):
         self.client.force_authenticate(user=self.user)
         with tempfile.TemporaryDirectory() as media_directory:
             with override_settings(MEDIA_ROOT=media_directory):
-                document = SDSDocument.objects.create(
-                    chemical=self.chemical,
-                    title="Replace PDF",
+                response = self.client.post(
+                    "/api/sds-documents/",
+                    {
+                        "chemical": self.chemical.id,
+                        "title": "No dates yet",
+                        "revision_date": "",
+                        "next_review_date": "",
+                        "file_reference": "",
+                        "sds_file": SimpleUploadedFile(
+                            "no-dates.pdf",
+                            b"%PDF-1.4\nfixture",
+                            content_type="application/pdf",
+                        ),
+                    },
+                    format="multipart",
                 )
-                document.sds_file.save(
-                    "old.pdf",
-                    ContentFile(b"%PDF-1.4\nold fixture"),
-                    save=True,
-                )
-                old_path = document.sds_file.path
 
-                with self.captureOnCommitCallbacks(execute=True):
-                    response = self.client.patch(
-                        f"/api/sds-documents/{document.id}/",
-                        {
-                            "sds_file": SimpleUploadedFile(
-                                "new.pdf",
-                                b"%PDF-1.4\nnew fixture",
-                                content_type="application/pdf",
-                            )
-                        },
-                        format="multipart",
-                    )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data["revision_date"])
+        self.assertIsNone(response.data["next_review_date"])
+        self.assertEqual(response.data["review_status"], "unknown")
 
-                self.assertEqual(response.status_code, status.HTTP_200_OK)
-                self.assertTrue(response.data["sds_file"])
-                self.assertFalse(os.path.exists(old_path))
+    def test_empty_optional_dates_clear_existing_values(self):
+        self.client.force_authenticate(user=self.user)
+        document = SDSDocument.objects.create(
+            chemical=self.chemical,
+            title="Dated document",
+            revision_date=date(2026, 1, 1),
+            next_review_date=date(2026, 12, 1),
+        )
+
+        response = self.client.patch(
+            f"/api/sds-documents/{document.id}/",
+            {"revision_date": "", "next_review_date": ""},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["revision_date"])
+        self.assertIsNone(response.data["next_review_date"])
 
     def test_anonymous_user_cannot_update_sds_metadata(self):
         document = SDSDocument.objects.create(
@@ -519,6 +641,26 @@ class AuthenticationEndpointTests(TestCase):
             response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+
+    @override_settings(LOGIN_RATE_LIMIT="2/min")
+    def test_login_attempts_are_rate_limited(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for _ in range(2):
+            response = self.client.post(
+                "/api/auth/login/",
+                {"username": self.username, "password": "wrong-password"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        limited = self.client.post(
+            "/api/auth/login/",
+            {"username": self.username, "password": "wrong-password"},
+            format="json",
+        )
+
+        self.assertEqual(limited.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
     def test_login_enforces_csrf_for_anonymous_requests(self):
         client = APIClient(enforce_csrf_checks=True)

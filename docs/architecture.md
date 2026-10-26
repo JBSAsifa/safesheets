@@ -33,7 +33,7 @@ The API uses SessionAuthentication. CORS and CSRF trusted origins default to the
 
 SQLite is located at `backend/db.sqlite3` and is ignored by Git. Django migrations define the schema. Uploaded files currently live under `backend/media/sds_documents/`; existing untracked PDFs in this working tree are user data and must be preserved. A `FileField` stores a relative name in the row. The file endpoint checks login and handles absent files with 404.
 
-Local disk is suitable for a demo, not a horizontally scaled deployment. Production should use private object storage with access mediated by the backend or short-lived authorized links, plus backup and retention policy. Chemical deletion explicitly removes linked SDS rows and files after the database transaction commits; it cannot be undone.
+Local disk is suitable for a demo, not a horizontally scaled deployment. Production should use private object storage with access mediated by the backend or short-lived authorized links, plus backup and retention policy. Chemical deletion explicitly removes linked SDS rows and attempts to remove files after the database transaction commits; it cannot be undone. Cleanup failures are logged without changing the successful response because the database deletion has already committed. Orphan cleanup remains an operational follow-up.
 
 ## Data models as implemented
 
@@ -50,7 +50,7 @@ The built-in Django user model stores username, password hash, and active/staff/
 | `manufacturer` | Optional manufacturer, max 200 characters |
 | `location` | Optional storage location, max 200 characters |
 | `notes` | Optional notes |
-| `created_by` | Optional user reference; current create flow does not set it |
+| `created_by` | Optional user reference; the API sets it to the signed-in creator |
 | `created_at`, `updated_at` | Timestamps |
 
 ### SDSDocument
@@ -66,7 +66,7 @@ The built-in Django user model stores username, password hash, and active/staff/
 | `sds_file` | Optional PDF file stored under `sds_documents/` |
 | `created_at`, `updated_at` | Timestamps |
 
-`review_status` is a computed property, not a stored column. Missing is unknown; past is overdue; today through 30 days ahead inclusive is due soon; later is current. `timezone.localdate()` is used, with Django configured to UTC. A date is a reminder only and not evidence of compliance.
+`review_status` is a computed property, not a stored column. Missing is unknown; past is overdue; today through 30 days ahead inclusive is due soon; later is current. `timezone.localdate()` uses the configured `DJANGO_TIME_ZONE` (default `UTC`); set this to the workplace’s time zone so a date does not change category at the wrong local midnight. A date is a reminder only and not evidence of compliance.
 
 ### Access boundary
 
@@ -89,11 +89,41 @@ Base URL: `http://localhost:8001/api/`
 | `GET, PATCH /sds-documents/{id}/` | Signed in | Retrieve or update SDS metadata and optionally replace its PDF |
 | `GET /sds-documents/{id}/file/` | Signed in | Stream the associated PDF |
 
-Chemical list search currently happens in the browser. SDS status filtering is also currently evaluated in Python after loading the queryset. Pagination, API search, and structured audit logs are future improvements for larger datasets.
+Login attempts are throttled using `LOGIN_RATE_LIMIT` (default `10/hour`). The local cache is process-local; production needs a shared cache and deliberate proxy IP configuration.
+
+### Example API contract
+
+Create a chemical with JSON:
+
+```json
+{
+  "name": "Example chemical",
+  "manufacturer": "",
+  "location": "Cabinet A",
+  "notes": ""
+}
+```
+
+The API responds with `201 Created` and the new chemical’s ID, saved fields, timestamps, and `sds_documents` array. Upload an SDS with `POST /sds-documents/` as `multipart/form-data`, containing `chemical`, `title`, optional `revision_date` and `next_review_date`, and the actual `sds_file` bytes. A successful response includes `review_status` and a boolean `sds_file`; it does not expose the local file path. Empty optional date fields are stored as null, and on `PATCH` they clear existing dates. Invalid input returns field errors with a 4xx status.
+
+The browser then opens `GET /sds-documents/{id}/file/` with the signed-in session cookie. Success streams `application/pdf`; unauthenticated access is rejected and absent files return 404.
+
+Chemical list search currently happens in the browser. SDS status filtering is also currently evaluated in Python after loading the queryset. Pagination, API search, tenant isolation, and structured audit logs are future improvements before larger or internet-facing use.
 
 ## File validation and delivery
 
 The SDS API response returns `sds_file: true/false` to indicate whether a file is attached; it does not return a local path. The SDS model validates a `.pdf` extension, a maximum size of 10 MiB, and the `%PDF-` header. This is a useful baseline but does not prove a PDF is safe or well-formed. Do not serve uploads through an unauthenticated static media URL. The file API uses the authenticated session and returns a PDF stream; storage paths are not returned as error detail.
+
+## Authentication and file flows
+
+1. The browser requests `/csrf-token/`, receives Django’s CSRF cookie, then posts credentials to `/auth/login/` with that token. Django verifies the credentials, creates a session, and limits repeated anonymous login attempts.
+2. The dashboard checks `/auth/session/` before requesting chemical and SDS records. Record APIs require the session cookie; unsafe requests also require a valid CSRF token.
+3. The SDS form sends metadata and the PDF as multipart form data. The serializer validates the chemical and dates, while server-side file validators check the extension, size, and PDF header before accepting the record.
+4. To open a PDF, the browser calls the authenticated file endpoint and receives a PDF response. The API does not return a storage path or expose a public media URL.
+
+## Future AI extension point
+
+The current backend owns document records and file delivery, so later extraction or summarization can be added as a separate server-side service that reads an authorized SDS and stores reviewed results as metadata. No AI provider, extraction, or generated safety guidance is implemented. Any future output should be clearly marked as machine-generated and require human review.
 
 ## Local setup and configuration
 

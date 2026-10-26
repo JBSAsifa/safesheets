@@ -12,8 +12,19 @@ class SDSFileField(serializers.FileField):
         return bool(value)
 
 
+class OptionalDateField(serializers.DateField):
+    """Treat empty multipart date controls as a null date value."""
+
+    def to_internal_value(self, value):
+        if value == "":
+            return None
+        return super().to_internal_value(value)
+
+
 class SDSDocumentSerializer(serializers.ModelSerializer):
     review_status = serializers.ReadOnlyField()
+    revision_date = OptionalDateField(required=False, allow_null=True)
+    next_review_date = OptionalDateField(required=False, allow_null=True)
     sds_file = SDSFileField(
         required=False,
         allow_null=True,

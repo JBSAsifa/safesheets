@@ -123,7 +123,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "UTC")
 
 USE_I18N = True
 
@@ -176,5 +176,6 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
     ],
 }
+LOGIN_RATE_LIMIT = os.environ.get("LOGIN_RATE_LIMIT", "10/hour")
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"

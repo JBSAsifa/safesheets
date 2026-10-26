@@ -15,7 +15,7 @@ SafeSheets is an educational record-management demo. It does not validate SDS co
 - A live list of chemicals without an SDS record
 - PDF extension, signature, and 10 MiB size validation
 
-The repository currently contains uncommitted development work for several of these features. Review `git status` before changing or staging files. See [requirements](docs/requirements.md) and [architecture](docs/architecture.md) for scope and limitations.
+See [requirements](docs/requirements.md), [architecture](docs/architecture.md), [security notes](docs/security.md), and [testing guide](docs/testing.md) for scope, setup, and limitations.
 
 ## Technology
 
@@ -87,9 +87,11 @@ Prerequisites: Python 3.11 and Node.js/npm compatible with the versions in `fron
 |---|---:|---|
 | `DJANGO_SECRET_KEY` | Yes | Stable Django signing key; keep it private |
 | `DJANGO_DEBUG` | No | Defaults to `true` for local use; set `false` in production |
+| `DJANGO_TIME_ZONE` | No | Time zone used for review-date boundaries; defaults to `UTC` (for example, `Asia/Dhaka`) |
 | `DJANGO_ALLOWED_HOSTS` | No | Comma-separated hostnames; local defaults are `localhost,127.0.0.1` |
 | `CORS_ALLOWED_ORIGINS` | No | Comma-separated browser origins |
 | `CSRF_TRUSTED_ORIGINS` | No | Comma-separated origins trusted for CSRF |
+| `LOGIN_RATE_LIMIT` | No | Anonymous login request limit; defaults to `10/hour` |
 | `NEXT_PUBLIC_API_URL` | No | Browser API base URL; defaults to `http://localhost:8001/api` |
 | `SECURE_SSL_REDIRECT` | No | Defaults to enabled when `DJANGO_DEBUG=false`; use HTTPS in production |
 | `SECURE_HSTS_SECONDS` | No | Defaults to `0`; set only after validating HTTPS and domain policy |
@@ -133,14 +135,24 @@ Inventory and file routes require a signed-in session. Obtain the CSRF cookie fr
 
 - All authenticated users currently share one dataset; no roles or organization-level isolation are implemented.
 - Local SQLite and local file storage are for a single-developer demo, not production scale or resilience.
-- Chemical deletion requires confirmation and permanently removes its linked SDS records and PDFs. There is no restore workflow.
+- Chemical deletion requires confirmation, permanently removes linked SDS records, and attempts to delete their PDFs. There is no restore workflow; a storage failure can leave an orphan file.
 - SDS deletion, notifications, pagination, API-level chemical search, production deployment configuration, and frontend automated tests are not included.
 - Review status is an organizational date reminder only.
 
 ## Screenshots
 
-Screenshots will be added after a verified local walkthrough. No screenshots are included yet.
+No screenshots are included yet. Add screenshots here after a verified local walkthrough.
+
+<!-- Screenshot placeholder: add a real dashboard screenshot after a verified walkthrough. -->
+
+## Troubleshooting
+
+- **Django refuses to start:** set `DJANGO_SECRET_KEY` in the same terminal before starting the backend. The example file documents variables; Django does not load it automatically.
+- **The dashboard says the API is unavailable:** start Django on port `8001` and confirm `NEXT_PUBLIC_API_URL` points to `http://localhost:8001/api`.
+- **Login or writes fail with a CSRF message:** use the same hostname consistently (`localhost` or `127.0.0.1`) in the browser and API URL. Confirm that hostname’s frontend origin is listed in the backend CORS and CSRF trusted origins.
+- **A PDF is rejected:** upload a `.pdf` file no larger than 10 MiB. The server checks its extension and PDF header; this does not certify the document as safe or authentic.
+- **An older database has unapplied schema changes:** run `python backend/manage.py migrate`. This applies migrations while preserving existing records; never delete the SQLite file as a workaround.
 
 ## Portfolio status
 
-This README describes intended and present code paths, not a claim that the current uncommitted version has been deployed or fully verified. The docs describe known implementation gaps and verification commands. No deployment is configured.
+This README describes the local application; it does not claim production deployment or a professional security review. The docs describe known implementation gaps and verification commands. No deployment is configured.

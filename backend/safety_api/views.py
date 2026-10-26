@@ -1,6 +1,8 @@
 
+import logging
 import os
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.core.files.storage import default_storage
 from django.db import transaction
@@ -9,14 +11,35 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 
 from .models import Chemical, SDSDocument
 from .serializers import ChemicalSerializer, SDSDocumentSerializer
+
+logger = logging.getLogger(__name__)
+
+
+class LoginRateThrottle(AnonRateThrottle):
+    scope = "login"
+
+    def get_rate(self):
+        return settings.LOGIN_RATE_LIMIT
+
+
+def _delete_storage_file(name):
+    """Attempt post-commit cleanup without misreporting a saved mutation."""
+    try:
+        default_storage.delete(name)
+    except Exception:
+        # Database changes have already committed; returning an error here could
+        # make a client retry a successful create/update and produce duplicates.
+        logger.exception("Could not remove an SDS file after database commit")
+
 
 def health_check(request):
     return JsonResponse({
@@ -35,6 +58,7 @@ def csrf_token(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([LoginRateThrottle])
 @csrf_protect
 def login_view(request):
     username = request.data.get("username", "")
@@ -109,7 +133,7 @@ class ChemicalDetailView(generics.RetrieveUpdateDestroyAPIView):
         with transaction.atomic():
             instance.delete()
             transaction.on_commit(
-                lambda: [default_storage.delete(name) for name in file_names]
+                lambda: [_delete_storage_file(name) for name in file_names]
             )
 
 
@@ -166,7 +190,7 @@ class SDSDocumentDetailView(generics.RetrieveUpdateAPIView):
         document = serializer.save()
         new_file_name = document.sds_file.name
         if old_file_name and old_file_name != new_file_name:
-            transaction.on_commit(lambda: default_storage.delete(old_file_name))
+            transaction.on_commit(lambda: _delete_storage_file(old_file_name))
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

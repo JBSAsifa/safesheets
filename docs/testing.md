@@ -11,7 +11,7 @@ python backend/manage.py test safety_api
 pytest
 ```
 
-Django creates a temporary test database and removes it after the run. Tests cover authentication, chemical create/update/delete behavior, cascade file cleanup, SDS upload signature and size validation, authenticated file access, metadata updates, and review-date boundaries.
+Django creates a temporary test database and removes it after the run. Tests cover authentication and login throttling, chemical create/retrieve/update/delete behavior, cascade file cleanup and cleanup failures, SDS upload signature and size validation, optional and cleared dates, authenticated file access, missing files, metadata updates, status filters, review-date boundaries, and timezone conversion at a local-date boundary.
 
 ## Frontend
 
@@ -39,3 +39,7 @@ The repository does not currently include a frontend unit-test or browser automa
 9. Delete a test chemical through the confirmation dialog. Confirm the app explains that its SDS records and PDFs will also be deleted.
 
 Manual browser steps should only be reported as verified after actually completing them.
+
+## Recent manual verification
+
+On 2026-10-27, an isolated local QA copy was used to verify sign-in and sign-out, chemical create/edit/search and status filtering, chemical details, SDS upload and metadata date editing, no-match states, and the authenticated PDF endpoint (HTTP 200). With `DJANGO_TIME_ZONE=Asia/Dhaka`, a review date 30 days ahead appeared as due soon and updated the dashboard count. The chemical deletion confirmation dialog was checked for keyboard focus looping and Escape-to-cancel; deletion itself was not submitted. These checks were manual and are not a substitute for automated browser tests.
