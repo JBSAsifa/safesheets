@@ -140,9 +140,6 @@ Inventory and file routes require a signed-in session. Obtain the CSRF cookie fr
 - Review status is an organizational date reminder only.
 
 ## Screenshots
-
-No screenshots are included yet. Add screenshots here after a verified local walkthrough.
-
 ### Dashboard
 <img width="1130" height="785" alt="dashboard" src="https://github.com/user-attachments/assets/a4579eef-4209-40a1-85f7-0daff92a674b" />
 
