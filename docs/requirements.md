@@ -1,225 +1,116 @@
-# SafeSheets — Product Requirements
+# SafeSheets Product Requirements
 
-## 1. Project Overview
+## Purpose and scope
 
-SafeSheets is a portfolio web application for managing workplace chemical records and Safety Data Sheet (SDS) metadata.
+SafeSheets is a single-workspace portfolio application for organizing chemical inventory records and their Safety Data Sheet (SDS) metadata and PDFs. It helps staff find a record and see whether its next review date is missing, approaching, or past. It is an organizational reminder, not a regulatory compliance tool or a source of safety advice.
 
-The goal is to help workplace safety personnel organize chemical information, find relevant safety documents, and track document review dates.
+The current project is a local-development MVP maintained by one developer. The repository currently uses Django REST Framework, Next.js/React/TypeScript, SQLite, Django session authentication, and local media storage. These requirements describe product behavior; implementation status is called out separately below.
 
-This is an educational portfolio project, not a certified safety or regulatory compliance system.
+## Users and needs
 
-## 2. Target Users
+| User | Need | MVP access |
+|---|---|---|
+| Safety coordinator | Maintain chemical records and keep SDS files and review dates findable | Signed-in user can currently create, update, and delete records |
+| Workplace employee | Find a chemical, its storage location, and related SDS information | The current API requires sign-in; all signed-in users share the same workspace data |
+| Local administrator/developer | Create accounts and operate the demo | Uses Django’s built-in user/admin facilities; self-service account creation is not in scope |
 
-### Safety Manager
+**Access assumption:** the current data model has no organization or per-record ownership boundary. Authentication protects the API, but any authenticated account can currently see and modify the same records. Do not use this build for multiple customers or confidential production inventory until tenant isolation and role permissions are designed and tested.
 
-Maintains chemical records and checks whether safety documents need review.
+## User problems
 
-### Workplace Employee
+- Chemical details and storage locations are hard to find when records are scattered.
+- Staff cannot quickly tell which SDS documents are missing a review date or need attention.
+- A file reference alone may not make a document accessible at the point of need.
+- Users need clear feedback when a save, upload, search, or file open fails.
+- Chemical and document records should be protected from anonymous access.
 
-Searches for a chemical and accesses its available safety document information.
+## MVP capabilities
 
-### Administrator
+1. **Sign in and session access:** sign in, check the current session, and sign out using Django sessions and CSRF protection.
+2. **Chemical inventory:** list, search by name/manufacturer/location, create, inspect details, and update a chemical. Editing must update the selected record using its ID.
+3. **SDS metadata and PDF:** attach a titled SDS record to an existing chemical, record optional revision and next review dates, upload a PDF up to 10 MiB, and open it through an authenticated endpoint.
+4. **Review tracking:** show `unknown` when the next review date is absent, `overdue` before today, `due_soon` from today through 30 days ahead inclusive, and `current` after that. Django’s configured local date is authoritative.
+5. **Inventory status filter and dashboard counts:** filter chemicals based on associated SDS status and summarize actual loaded records.
+6. **Feedback:** show loading, empty, error, and saving states; prevent repeated form submission while a save is pending.
 
-Manages user access and ensures that only authorized users can change records.
+### Not in MVP
 
-## 3. User Problems
+SDS deletion, role-based write restrictions, multi-company tenancy, notifications, bulk import/export, OCR or AI safety interpretation, compliance certification, and production object storage are future work.
 
-- Chemical records may be difficult to find.
-- Employees may not know whether a document needs review.
-- Inconsistent or incomplete records can make information harder to manage.
-- Unauthorized users should not be able to modify safety records.
-- Users need clear feedback when a search or update fails.
+**Chemical deletion policy:** after explicit confirmation, permanently delete the chemical, associated SDS metadata, and stored SDS PDF files. This is the local MVP’s deliberate cascade behavior. There is no restore workflow.
 
-## 4. MVP Scope
+## User stories and measurable acceptance criteria
 
-### Feature 1: Chemical Records
+### Find inventory
 
-Users with appropriate permissions can create, view, update, and archive chemical records.
+As an employee, I want to search chemicals by name, manufacturer, or storage location and narrow results by SDS status.
 
-Each record includes:
+- The search matches each of those three fields without case sensitivity.
+- The status selector includes all, overdue, due soon, current, and unknown.
+- An empty result set explains that no records match; loading and API failure are distinct states.
+- A chemical row shows its associated SDS count and a readable status label.
 
-- Chemical or product name
-- Manufacturer
-- Product identifier
-- Hazard summary
-- SDS document reference
-- Review date
-- Created and updated timestamps
+### Create and update a chemical
 
-### Feature 2: SDS Metadata
+As a safety coordinator, I want to add a chemical and correct its details later.
 
-The application stores metadata and a reference to an SDS document.
+- A blank/whitespace-only name is rejected by both client and server; valid names are limited to 200 characters.
+- Create submits once and refreshes the list after a successful response.
+- Edit prefills the selected record’s current values and sends `PATCH /api/chemicals/{id}/`.
+- After update, the selected record retains its original ID and changed values appear without a page reload.
+- Cancel closes the form without sending a request and discards unsaved edits.
+- While a request is pending, the submit control is disabled. API validation or expired-session errors are visible.
 
-For the initial version, document metadata may include:
+### Add and open an SDS
 
-- Document title
-- Version or revision date, if known
-- Review date
-- File reference or URL
-- Associated chemical record
+As a safety coordinator, I want to associate a PDF and its review dates with a chemical.
 
-The MVP does not claim that uploaded documents are authentic, complete, or regulator-approved.
+- An SDS requires an existing chemical and non-empty title; date values must parse as dates.
+- The server accepts only a `.pdf` upload with a PDF signature and size no greater than 10 MiB.
+- Invalid or oversized uploads return a field-level API error and create no usable document.
+- Signed-in users can open an attached PDF through the API; anonymous users cannot.
+- Missing attachments and missing stored files return a not-found response without exposing a filesystem path.
 
-### Feature 3: Search and Filtering
+### Understand review timing
 
-Users can search records by product name or manufacturer.
+As a safety coordinator, I want review labels to match the date rule.
 
-Users can filter records by review status.
+- With a fixed local date `D`, absent date => unknown; `D - 1 day` => overdue; `D` and `D + 30 days` => due soon; `D + 31 days` => current.
+- The API supplies the status used by the frontend; the frontend does not independently recompute it.
+- Text accompanies status colors. No label is represented as a compliance determination.
 
-Search results should communicate clearly when no matching records exist.
+### Protect records
 
-### Feature 4: Review-Date Tracking
+As a user, I want the API to require an authenticated session for inventory and document operations.
 
-The application identifies records whose review dates are approaching or have passed.
+- Anonymous requests to list, create, retrieve, update, delete, or open files are rejected.
+- State-changing browser requests use CSRF protection.
+- User input and uploaded files are validated server-side.
+- No secret value, private database, or uploaded document is committed to source control.
 
-Review status is an organizational reminder only. It does not determine legal compliance.
+## Important edge cases
 
-### Feature 5: Authentication and Access Control
+- Empty inventory, no search matches, chemical with no SDS, and SDS with no review date.
+- Whitespace names, maximum-length strings, malformed dates, invalid chemical IDs, and nonexistent records.
+- Review dates exactly today, at the 30-day edge, and one day beyond it.
+- Expired session, CSRF rejection, backend unavailable, failed refresh after a successful mutation.
+- Wrong extension, non-PDF content named `.pdf`, zero-byte file, file over 10 MiB, missing stored file, and popup blocked by the browser.
+- Multiple authenticated users currently share data; this behavior must be disclosed until isolation is implemented.
+- Chemical deletion requires confirmation and removes the chemical, linked SDS metadata, and stored files under the documented cascade policy.
 
-Users must sign in to access protected features.
+## Quality and security requirements
 
-- Employees can view permitted records.
-- Safety managers can create and update chemical records.
-- Administrators can manage authorized users.
-- Unauthorized requests must be rejected by the backend.
+- Backend permissions are the security boundary; hiding a button does not grant or deny API access.
+- Preserve Django session authentication and CSRF checks. Do not make record or file endpoints public to simplify browser access.
+- Apply serializer/model validation and return useful 4xx responses for bad input and missing records.
+- Keep secrets in environment configuration; never commit `.env`, credentials, local database data, or uploaded PDFs.
+- In production, configure secure cookies, HTTPS, allowed hosts, CORS/CSRF origins, secret management, backups, and managed file storage before use.
+- Use keyboard-operable controls, explicit form labels, visible focus, responsive layouts, and text labels in status badges.
+- Keep review logic on the server and cover boundary dates with automated tests.
+- Do not claim the application verifies SDS authenticity, completeness, hazards, or regulatory compliance.
 
-Exact permissions will be defined during implementation.
+## Current status (repository audit)
 
-## 5. Out of Scope for the MVP
+The existing working tree includes user changes for session login/logout, authenticated inventory APIs, PDF upload/view, review status, tests, and a dashboard. This improvement pass adds chemical editing and confirmed cascade deletion, SDS metadata editing, a configurable API origin, and security/testing documentation. Role policy and tenant isolation remain future work.
 
-- AI-generated safety advice
-- Automated regulatory compliance certification
-- Complex chemical risk calculations
-- Multi-company subscription billing
-- Mobile applications
-- Advanced analytics
-- Email notification services
-- Automated extraction of information from SDS PDFs
-
-These features may be considered in later versions.
-
-## 6. User Stories and Acceptance Criteria
-
-### Story 1: Find a Chemical
-
-As an employee, I want to search for a chemical by name so that I can find its record.
-
-Acceptance criteria:
-
-- A matching search returns relevant records.
-- A search with no matches displays an appropriate empty state.
-- Search input is validated and handled safely.
-- Users cannot retrieve records they are not authorized to view.
-
-### Story 2: Create a Chemical Record
-
-As a safety manager, I want to create a chemical record so that its information can be maintained centrally.
-
-Acceptance criteria:
-
-- Authorized users can submit valid records.
-- Required fields are validated by the backend.
-- Invalid submissions return useful error messages.
-- Unauthorized users cannot create records.
-- A successful creation returns the saved record.
-
-### Story 3: Update a Record
-
-As a safety manager, I want to update a chemical record when its information changes.
-
-Acceptance criteria:
-
-- Authorized users can edit permitted fields.
-- Invalid values are rejected.
-- Changes persist in the database.
-- Unauthorized update attempts are rejected.
-
-### Story 4: Identify Records Needing Review
-
-As a safety manager, I want to identify records with approaching or overdue review dates.
-
-Acceptance criteria:
-
-- Review status is calculated consistently using a defined date rule.
-- Overdue records are clearly identified.
-- Missing review dates are identified as unknown rather than assumed current.
-- Date calculations use a documented timezone policy.
-
-### Story 5: Protect User Access
-
-As an administrator, I want role-based permissions so that users can perform only authorized actions.
-
-Acceptance criteria:
-
-- Protected endpoints require authentication.
-- Backend permissions are enforced independently of the user interface.
-- Unauthorized requests do not modify data.
-- Secrets and credentials are not stored in source control.
-
-## 7. Non-Functional Requirements
-
-### Security
-
-- Validate input on the server.
-- Use established authentication mechanisms.
-- Enforce permissions on every protected endpoint.
-- Keep credentials in environment variables or an appropriate secrets manager.
-- Avoid exposing sensitive information in error messages or logs.
-
-### Reliability
-
-- Return clear errors for invalid requests.
-- Handle missing records without crashing.
-- Persist successful changes.
-- Test critical business rules.
-
-### Usability
-
-- Provide clear loading, success, empty, and error states.
-- Use consistent forms and navigation.
-- Make review status easy to understand.
-
-### Maintainability
-
-- Keep frontend and backend responsibilities separate.
-- Use readable code and consistent naming.
-- Document setup instructions and important decisions.
-- Add automated tests for critical behavior.
-
-## 8. Edge Cases
-
-- Duplicate product identifiers
-- Missing manufacturer information
-- Empty or whitespace-only names
-- Invalid review dates
-- Missing SDS references
-- Searches with no matches
-- Requests for nonexistent records
-- Expired or invalid authentication
-- Unauthorized record creation or modification
-- Database or API failures
-- Documents with broken or inaccessible links
-- Timezone differences around review dates
-
-The project must define explicit behavior for these cases during implementation.
-
-## 9. Success Criteria
-
-The MVP is ready for portfolio demonstration when:
-
-- Users can search and view permitted chemical records.
-- Authorized users can create and update records.
-- Review status is calculated correctly.
-- Authentication and backend permissions are tested.
-- Important success and failure cases have automated tests.
-- The application can be run using documented setup instructions.
-- The README explains the architecture, features, testing, and limitations.
-- The application is deployed only after the relevant security and functionality checks pass.
-
-## 10. Assumptions
-
-- The first version is maintained by one developer.
-- The initial dataset is small and intended for demonstration.
-- Real confidential workplace or chemical safety data will not be used.
-- The application is a portfolio project and is not certified for workplace compliance.
-- Document storage and deployment details will be finalized during architecture planning.
+The requirements are a target contract, not a claim that all listed behavior has passed verification. See the repository README for commands actually run and known limitations.

@@ -1,6 +1,4 @@
-
 @import "tailwindcss";
-
 
 :root {
   --background: #f6f8fb;
@@ -34,8 +32,13 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+}
+
+button {
+  cursor: pointer;
 }
 
 .dashboard {
@@ -162,6 +165,14 @@ h1 {
   gap: 10px;
   color: #596779;
   font-size: 12px;
+}
+
+.profile button {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: #445165;
 }
 
 .avatar {
@@ -532,6 +543,272 @@ footer {
   text-align: center;
 }
 
+/* Login page */
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f4f7fb;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+
+.login-logo {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: #0f766e;
+  color: white;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.login-brand h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.login-brand p,
+.login-description,
+.login-footer {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.login-brand p {
+  margin: 3px 0 0;
+}
+
+.login-card h2 {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 27px;
+  font-weight: 750;
+}
+
+.login-description {
+  margin: 0 0 26px;
+  line-height: 1.6;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.login-card label {
+  margin-top: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #0f172a;
+  font: inherit;
+  outline: none;
+}
+
+.login-card input:focus {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.login-card button {
+  margin-top: 14px;
+  padding: 13px;
+  border: 0;
+  border-radius: 9px;
+  background: #0f766e;
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-card button:hover {
+  background: #115e59;
+}
+
+.login-card button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.login-error {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.login-footer {
+  margin: 28px 0 0;
+  text-align: center;
+}
+
+/* Chemical inventory actions */
+
+.inventory-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inventory-actions button,
+.add-chemical-button,
+.chemical-form button,
+.add-chemical-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #176b55;
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.inventory-actions button:hover,
+.add-chemical-button:hover,
+.chemical-form button:hover,
+.add-chemical-form button:hover {
+  background: #115e49;
+}
+
+.inventory-actions button:disabled,
+.add-chemical-button:disabled,
+.chemical-form button:disabled,
+.add-chemical-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Support both previous and current chemical form class names */
+
+.chemical-form,
+.add-chemical-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin: 20px 0;
+  padding: 24px;
+  border: 1px solid #e1e7e4;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.chemical-form h3,
+.add-chemical-form h3 {
+  margin: 0;
+  color: #182230;
+  font-size: 20px;
+}
+
+.chemical-form label,
+.add-chemical-form label {
+  color: #263b33;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Support both form-field and direct form controls */
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.chemical-form input,
+.chemical-form textarea,
+.add-chemical-form input,
+.add-chemical-form textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid #cbd5d1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #182230;
+  font: inherit;
+}
+
+.chemical-form textarea,
+.add-chemical-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.chemical-form input:focus,
+.chemical-form textarea:focus,
+.add-chemical-form input:focus,
+.add-chemical-form textarea:focus {
+  outline: 2px solid #176b55;
+  outline-offset: 1px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chemical-form .secondary-button,
+.add-chemical-form .secondary-button {
+  border: 1px solid #d5ded9;
+  background: #e9efec;
+  color: #263b33;
+}
+
+.chemical-form .secondary-button:hover,
+.add-chemical-form .secondary-button:hover {
+  background: #dce7e1;
+}
+
+.form-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
 @media (max-width: 1100px) {
   .main-content {
     padding-right: 25px;
@@ -579,7 +856,8 @@ footer {
   }
 
   .profile {
-    max-width: 125px;
+    max-width: 160px;
+    flex-wrap: wrap;
     font-size: 10px;
   }
 
@@ -610,12 +888,20 @@ footer {
     align-items: flex-start;
   }
 
+  .records-heading {
+    flex-wrap: wrap;
+  }
+
+  .inventory-actions {
+    align-items: flex-start;
+  }
+
   .toolbar {
     flex-direction: column;
   }
 
   .toolbar select {
-    height: 39px;
+    min-height: 39px;
   }
 
   .document-row {
@@ -625,5 +911,262 @@ footer {
 
   .document-date {
     margin-left: 48px;
+  }
+
+  .chemical-form,
+  .add-chemical-form {
+    padding: 16px;
+  }
+}
+
+.add-chemical-form select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid #cbd5d1;
+  border-radius: 8px;
+  background: #fff;
+  color: #182230;
+  font: inherit;
+}
+
+.add-chemical-form select:focus {
+  outline: 2px solid #176b55;
+  outline-offset: 1px;
+}
+
+.add-chemical-button {
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .records-heading {
+    flex-wrap: wrap;
+  }
+}
+/* Chemical details card */
+.main-content .chemical-details-panel {
+  display: block;
+  position: relative;
+  width: 100%;
+  margin: 28px 0;
+  padding: 28px;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  border: 1px solid #dbe5e1;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+  color: #334155;
+}
+
+.main-content .chemical-details-panel .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 0 0 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.main-content .chemical-details-panel h3 {
+  margin: 0 0 6px;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.main-content .chemical-details-panel h4 {
+  margin: 26px 0 14px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.main-content .chemical-details-panel p {
+  margin: 12px 0;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.main-content .chemical-details-panel p strong {
+  color: #0f172a;
+}
+
+.main-content .chemical-details-panel ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.main-content .chemical-details-panel li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.main-content .chemical-details-panel li strong {
+  color: #0f172a;
+}
+
+.main-content .chemical-details-panel .secondary-button {
+  padding: 9px 14px;
+  background-color: #ffffff;
+  color: #166b52;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.main-content .chemical-details-panel .secondary-button:hover:not(:disabled) {
+  background-color: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.main-content .chemical-details-panel .secondary-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .main-content .chemical-details-panel {
+    padding: 18px;
+  }
+
+  .main-content .chemical-details-panel .section-heading {
+    align-items: flex-start;
+  }
+
+  .main-content .chemical-details-panel li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.danger-button {
+  border: 1px solid #b42318;
+  border-radius: 8px;
+  background: #b42318;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0.65rem 0.9rem;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #912018;
+}
+
+.danger-button:focus-visible,
+.secondary-button:focus-visible,
+button:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 55%);
+}
+
+.confirm-dialog {
+  width: min(100%, 32rem);
+  border: 1px solid #d9e2e1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 24%);
+  padding: 1.5rem;
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 0.75rem;
+}
+
+.confirm-dialog p {
+  color: #52615f;
+  line-height: 1.6;
+}
+
+.confirm-dialog .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.missing-sds-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.missing-sds-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e7eeed;
+  padding: 0.7rem 0;
+}
+
+.success-message {
+  margin: 1rem 0;
+  border: 1px solid #a7f3d0;
+  border-radius: 9px;
+  background: #ecfdf5;
+  color: #065f46;
+  padding: 0.75rem 1rem;
+}
+
+.document-filter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.document-filter label {
+  color: #52615f;
+  font-size: 0.875rem;
+}
+
+.document-filter select {
+  min-width: 10rem;
+  border: 1px solid #cfd9d8;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+}
+
+@media (max-width: 540px) {
+  .confirm-dialog .form-actions {
+    flex-direction: column;
+  }
+
+  .confirm-dialog .form-actions button {
+    width: 100%;
   }
 }

@@ -1,10 +1,27 @@
 
 from rest_framework import serializers
-from .models import Chemical, SDSDocument
+from django.core.validators import FileExtensionValidator
+
+from .models import Chemical, SDSDocument, validate_sds_file
+
+
+class SDSFileField(serializers.FileField):
+    """Accept a validated upload but expose only whether one is attached."""
+
+    def to_representation(self, value):
+        return bool(value)
 
 
 class SDSDocumentSerializer(serializers.ModelSerializer):
     review_status = serializers.ReadOnlyField()
+    sds_file = SDSFileField(
+        required=False,
+        allow_null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["pdf"]),
+            validate_sds_file,
+        ],
+    )
 
     class Meta:
         model = SDSDocument
@@ -16,6 +33,7 @@ class SDSDocumentSerializer(serializers.ModelSerializer):
             "next_review_date",
             "review_status",
             "file_reference",
+            "sds_file",
             "created_at",
             "updated_at",
         ]
@@ -42,4 +60,8 @@ class ChemicalSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+        ]

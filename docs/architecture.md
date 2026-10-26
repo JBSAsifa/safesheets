@@ -1,289 +1,129 @@
-# SafeSheets — System Architecture
+# SafeSheets Architecture
 
-## 1. Architecture Overview
+## Current system at a glance
 
-SafeSheets uses a frontend, backend, and database architecture.
+SafeSheets is a small three-part web application. The browser renders the Next.js interface, Django REST Framework validates requests and enforces access, and SQLite stores application rows during local development. Uploaded SDS PDFs are stored under Django’s local media directory and are served only by an authenticated API view.
 
-- Frontend: Next.js and React
-- Backend: Python and Django REST Framework
-- Database: PostgreSQL
-- Testing: pytest and Django testing tools
-- Version control: Git and GitHub
+```mermaid
+flowchart LR
+  U[User's browser] -->|Next.js UI, localhost:3000| F[React frontend]
+  F -->|JSON or multipart HTTP, session cookie + CSRF| A[Django REST API, localhost:8001]
+  A --> D[(SQLite in local development)]
+  A --> S[Local SDS media files]
+  A -->|Authenticated PDF response| F
+```
 
-The frontend presents information to users. The backend validates requests, enforces permissions, and implements business rules. The database stores application records.
+The planned production database in earlier project notes was PostgreSQL, but the checked-in settings currently point to SQLite. Keep SQLite for the single-developer demo. Move to PostgreSQL only when deployment or concurrent use justifies it, and then validate the migration separately without replacing local data.
 
-## 2. How the System Works
+## Components and responsibilities
 
-Example: A safety manager creates a chemical record.
+### Frontend (`frontend/`)
 
-1. The user completes a form in the frontend.
-2. The frontend sends the information to a backend API.
-3. The backend checks authentication, permissions, and field validation.
-4. The backend saves valid data in PostgreSQL.
-5. The backend returns a response.
-6. The frontend displays the saved record or an appropriate error.
+Next.js App Router and React with TypeScript provide the login page and dashboard. The browser calls the configured `NEXT_PUBLIC_API_URL` (default `http://localhost:8001/api`), includes cookies with `credentials: "include"`, and obtains a CSRF token before state-changing requests. It presents chemical inventory search/filter, summary counts, chemical details, create/edit/delete forms, SDS upload/edit, and authenticated PDF viewing. The development server uses the existing Turbopack CSS setup; the production build script uses Next.js’s supported Webpack mode, which also builds without requiring an external font download.
 
-The frontend must not be treated as the security boundary. The backend must enforce permissions even if someone bypasses the user interface.
+The frontend may guide users with required fields and file size hints. It cannot be trusted to enforce permissions or file validity. Django remains authoritative. The Next.js project has ESLint and TypeScript checks; no dedicated frontend unit-test framework was present during the audit.
 
-## 3. Main Components
+### Backend (`backend/`)
 
-### Frontend
+Django REST Framework owns validation, sessions, permissions, review-status calculation, API responses, and file delivery. Inventory and SDS APIs require an authenticated user. Login, session inspection, and CSRF initialization are separate endpoints. SessionAuthentication enforces CSRF for unsafe requests.
 
-Technology: Next.js with React.
+The API uses SessionAuthentication. CORS and CSRF trusted origins default to the two localhost frontend origins and can be configured through environment variables.
 
-Responsibilities:
+### Database and uploaded files
 
-- Display the dashboard and chemical records.
-- Provide search, filters, and forms.
-- Display loading, success, empty, and error states.
-- Send requests to the backend API.
-- Present information according to the signed-in user's permissions.
+SQLite is located at `backend/db.sqlite3` and is ignored by Git. Django migrations define the schema. Uploaded files currently live under `backend/media/sds_documents/`; existing untracked PDFs in this working tree are user data and must be preserved. A `FileField` stores a relative name in the row. The file endpoint checks login and handles absent files with 404.
 
-The frontend must not contain database credentials or other server secrets.
+Local disk is suitable for a demo, not a horizontally scaled deployment. Production should use private object storage with access mediated by the backend or short-lived authorized links, plus backup and retention policy. Chemical deletion explicitly removes linked SDS rows and files after the database transaction commits; it cannot be undone.
 
-### Backend
+## Data models as implemented
 
-Technology: Python with Django REST Framework.
+### Django User
 
-Responsibilities:
-
-- Authenticate users.
-- Enforce role-based access control.
-- Validate and process API requests.
-- Apply chemical record and review-date business rules.
-- Read and update records in the database.
-- Return consistent responses and error messages.
-
-### Database
-
-Technology: PostgreSQL.
-
-Responsibilities:
-
-- Store user and role information.
-- Store chemical records and SDS metadata.
-- Maintain relationships between records.
-- Enforce appropriate database constraints.
-
-## 4. Proposed Data Models
-
-### User
-
-Fields:
-
-- id: unique identifier
-- username or email: login identity
-- password: managed securely through Django authentication
-- role: employee, safety_manager, or administrator
-- is_active: whether the account is enabled
-
-Use Django's established authentication system rather than implementing password storage from scratch.
+The built-in Django user model stores username, password hash, and active/staff/superuser flags. No custom role field is defined.
 
 ### Chemical
 
-Fields:
-
-- id: unique identifier
-- name: required chemical or product name
-- manufacturer: manufacturer name, if known
-- product_identifier: product code, if known
-- hazard_summary: concise informational summary
-- created_at: creation timestamp
-- updated_at: last update timestamp
-- archived_at: optional archive timestamp
-
-Product identifiers may require a uniqueness rule appropriate to the manufacturer and available data.
+| Field | Meaning |
+|---|---|
+| `id` | Database identifier |
+| `name` | Required chemical/product name, max 200 characters |
+| `manufacturer` | Optional manufacturer, max 200 characters |
+| `location` | Optional storage location, max 200 characters |
+| `notes` | Optional notes |
+| `created_by` | Optional user reference; current create flow does not set it |
+| `created_at`, `updated_at` | Timestamps |
 
 ### SDSDocument
 
-Fields:
+| Field | Meaning |
+|---|---|
+| `id` | Database identifier |
+| `chemical` | Required foreign key; deleting the chemical cascades its database document rows |
+| `title` | Document title, max 200 characters |
+| `revision_date` | Optional date from the document |
+| `next_review_date` | Optional organizational review date |
+| `file_reference` | Optional legacy/reference text |
+| `sds_file` | Optional PDF file stored under `sds_documents/` |
+| `created_at`, `updated_at` | Timestamps |
 
-- id: unique identifier
-- chemical: relationship to a Chemical record
-- title: document title
-- revision_date: optional date printed on the document
-- review_date: optional organizational review date
-- document_reference: controlled file reference or URL
-- created_at: creation timestamp
+`review_status` is a computed property, not a stored column. Missing is unknown; past is overdue; today through 30 days ahead inclusive is due soon; later is current. `timezone.localdate()` is used, with Django configured to UTC. A date is a reminder only and not evidence of compliance.
 
-A missing revision date must not be treated as proof that a document is current.
+### Access boundary
 
-For the MVP, document references may be stored without implementing file uploads. Actual file storage and access controls can be designed separately.
+Authentication is required, but there is no organization foreign key or per-user queryset restriction. Any authenticated user can access the shared dataset and update records. This is acceptable only for a trusted local portfolio demo. Before multi-user or production use, define roles and organization membership, scope every queryset to the organization, and test cross-tenant denial.
 
-## 5. Proposed API Endpoints
+## API surface in the current code
 
-Base path: /api/
+Base URL: `http://localhost:8001/api/`
 
-### Authentication
+| Method and path | Access | Purpose |
+|---|---|---|
+| `GET /health/` | Public | Basic backend health response |
+| `GET /csrf-token/` | Public | Set/read CSRF cookie before browser writes |
+| `POST /auth/login/` | Public + CSRF | Create a Django session from username/password |
+| `GET /auth/session/` | Public | Return whether a session is active and username when signed in |
+| `POST /auth/logout/` | Signed in + CSRF | End current session |
+| `GET, POST /chemicals/` | Signed in | List or create chemical records |
+| `GET, PUT, PATCH, DELETE /chemicals/{id}/` | Signed in | Retrieve, update, or delete; delete cascades to linked SDS metadata and files |
+| `GET, POST /sds-documents/` | Signed in | List or create SDS metadata; optional `review_status` query filter |
+| `GET, PATCH /sds-documents/{id}/` | Signed in | Retrieve or update SDS metadata and optionally replace its PDF |
+| `GET /sds-documents/{id}/file/` | Signed in | Stream the associated PDF |
 
-- POST /api/auth/login/
-- POST /api/auth/logout/
-- GET /api/auth/me/
+Chemical list search currently happens in the browser. SDS status filtering is also currently evaluated in Python after loading the queryset. Pagination, API search, and structured audit logs are future improvements for larger datasets.
 
-The final authentication mechanism will be selected before implementation.
+## File validation and delivery
 
-### Chemicals
+The SDS API response returns `sds_file: true/false` to indicate whether a file is attached; it does not return a local path. The SDS model validates a `.pdf` extension, a maximum size of 10 MiB, and the `%PDF-` header. This is a useful baseline but does not prove a PDF is safe or well-formed. Do not serve uploads through an unauthenticated static media URL. The file API uses the authenticated session and returns a PDF stream; storage paths are not returned as error detail.
 
-- GET /api/chemicals/
-  - List permitted records.
-  - Support search and review-status filters.
+## Local setup and configuration
 
-- POST /api/chemicals/
-  - Create a chemical record.
-  - Requires an authorized role.
+The backend requires `DJANGO_SECRET_KEY` at startup. `backend/.env.example` documents safe placeholder values, but settings do not load that file automatically. Export a stable development-only value in your shell before starting Django; never commit the actual value and never use it in production. The frontend API origin uses `NEXT_PUBLIC_API_URL` and defaults to `http://localhost:8001/api`. Next.js embeds public environment variables at build time, so configure this value before building. Django debug mode, allowed hosts, CORS and CSRF origins are also configurable.
 
-- GET /api/chemicals/{id}/
-  - Retrieve a permitted record.
+The documented local startup is:
 
-- PATCH /api/chemicals/{id}/
-  - Update permitted fields.
-  - Requires an authorized role.
+```sh
+DJANGO_SECRET_KEY='your-stable-local-development-secret' python backend/manage.py runserver 8001
+cd frontend && npm run dev
+```
 
-- POST /api/chemicals/{id}/archive/
-  - Archive a record.
-  - Requires an authorized role.
+Use an environment variable mechanism already trusted on your machine if you prefer not to put the value in shell history. The local database and PDFs are not disposable; do not reset them to set up the application.
 
-### SDS Documents
+## Test strategy
 
-- GET /api/sds-documents/
-  - List permitted document metadata.
+- Django: `DJANGO_SECRET_KEY='local-test-key' ./.venv/bin/python backend/manage.py check`
+- Django tests: `DJANGO_SECRET_KEY='local-test-key' ./.venv/bin/python backend/manage.py test safety_api`
+- Frontend lint: `cd frontend && npm run lint`
+- Frontend types: `cd frontend && npx tsc --noEmit`
 
-- POST /api/sds-documents/
-  - Add document metadata for a chemical.
-  - Requires an authorized role.
+Tests should cover authentication, chemical create/retrieve/update validation, file upload validation and access, and review-date edges. Frontend verification should cover edit/cancel and submit-once behavior. Keep test-created data isolated in Django’s temporary test database; do not use the local development database for destructive test setup.
 
-- PATCH /api/sds-documents/{id}/
-  - Update document metadata.
-  - Requires an authorized role.
+## Phased implementation plan
 
-These are proposed endpoints. Their request formats, response schemas, filtering behavior, and permission rules must be defined during implementation.
+1. **Audit and stabilize:** preserve current changes and data; run checks; map existing endpoints and UI. Done when current behavior and failures are documented.
+2. **Chemical workflow:** verify create/detail/search/filter, prefilling, `PATCH` editing, cancellation, and confirmation before cascading deletion of SDS rows/files.
+3. **SDS workflow:** add and edit metadata, verify chemical association, date fields, server PDF checks, authenticated access, missing-file response, and status boundaries.
+4. **Dashboard quality:** refine responsive layout, loading/empty/error/success feedback, focus/keyboard access, and terminology using real API values.
+5. **Reliability/security:** test auth/CSRF and invalid inputs; define roles and ownership before any shared deployment; avoid exposing raw paths/errors.
+6. **Portfolio readiness:** update setup/API/limitations documentation, record verified checks accurately, then consider screenshots and deployment as separate work.
 
-## 6. Review-Date Rules
-
-The application will calculate review status using the current date and the configured review policy.
-
-Proposed statuses:
-
-- Overdue: the review date has passed.
-- Due soon: the review date falls within a configured warning period.
-- Current: the review date is beyond that period.
-- Unknown: no review date has been recorded.
-
-The warning period and timezone policy must be explicitly defined before implementation.
-
-Review status is an organizational tracking aid, not a legal compliance determination.
-
-## 7. Security Design
-
-- Require authentication for protected operations.
-- Enforce permissions on the backend.
-- Validate request data on the server.
-- Use Django's password and authentication facilities.
-- Keep credentials outside source control.
-- Use HTTPS in production.
-- Avoid exposing stack traces or secrets in API responses.
-- Configure allowed hosts, CORS, and CSRF protection appropriately for deployment.
-- Apply safe file-storage practices if uploads are introduced.
-- Test both authorized and unauthorized access.
-
-The MVP must not be presented as production-secure until the implementation has been reviewed and tested.
-
-## 8. Testing Strategy
-
-### Backend Unit Tests
-
-Test:
-
-- Required field validation.
-- Chemical record creation and updates.
-- Review-status calculations.
-- Duplicate identifier handling.
-- Missing and invalid dates.
-
-### API Tests
-
-Test:
-
-- Successful authorized requests.
-- Invalid request payloads.
-- Missing authentication.
-- Insufficient permissions.
-- Requests for nonexistent records.
-- Search and filter behavior.
-
-### Frontend Tests
-
-Test:
-
-- Form validation and error display.
-- Search and filtering.
-- Loading and empty states.
-- API failure handling.
-- Important user workflows.
-
-### Integration Tests
-
-Verify that the frontend, backend, and database work together as intended.
-
-Tests must be executed and their results recorded before claiming success.
-
-## 9. Development Phases
-
-### Phase 1: Requirements and Design
-
-- Review requirements.
-- Confirm acceptance criteria.
-- Finalize the architecture and data model.
-
-### Phase 2: Backend Foundation
-
-- Configure Django and PostgreSQL.
-- Define models and migrations.
-- Implement validation and API endpoints.
-- Add backend tests.
-
-### Phase 3: Frontend Foundation
-
-- Configure Next.js.
-- Build the dashboard and forms.
-- Connect the frontend to the backend.
-- Handle loading, success, and failure states.
-
-### Phase 4: Authentication and Permissions
-
-- Configure authentication.
-- Enforce role-based access control.
-- Test unauthorized requests.
-
-### Phase 5: End-to-End Validation
-
-- Run automated tests.
-- Test important user workflows.
-- Fix discovered defects and rerun regression tests.
-
-### Phase 6: Documentation and Deployment
-
-- Complete setup instructions.
-- Record actual test results and known limitations.
-- Configure deployment and environment variables.
-- Deploy only after the relevant checks pass.
-
-## 10. Assumptions and Open Questions
-
-- The MVP is developed by one person.
-- The initial dataset is small and for demonstration.
-- The application is not a certified compliance product.
-- The authentication mechanism remains to be finalized.
-- The document storage approach remains to be finalized.
-- The review warning period remains to be finalized.
-- Production hosting and database services remain to be selected.
-- Multi-organization data isolation is not yet specified and must be addressed before supporting multiple customers.
-
-## 11. Architecture Decision Principles
-
-- Prefer simple, understandable solutions.
-- Use established framework capabilities instead of reinventing security-sensitive features.
-- Keep business rules in the backend.
-- Test critical behavior and permissions.
-- Record significant trade-offs and assumptions.
-- Use AI-generated code only after appropriate validation.
+This is intentionally scoped for one developer. PostgreSQL deployment, roles/tenant isolation, storage service, CI, end-to-end browser automation, and notifications are not required for the local MVP.
